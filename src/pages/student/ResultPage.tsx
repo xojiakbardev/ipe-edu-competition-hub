@@ -1,7 +1,7 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
-import { submissionApi } from '@/api/mockApi';
+import { userQuizzesApi } from '@/api/userQuizzesApi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -16,7 +16,7 @@ import {
   Share2,
   Home
 } from 'lucide-react';
-import type { TestResult } from '@/types';
+import type { QuizResult } from '@/types';
 
 const ResultPage = () => {
   const navigate = useNavigate();
@@ -24,19 +24,31 @@ const ResultPage = () => {
   const { user } = useAuthStore();
   
   // Get result from navigation state or fetch
-  const stateResult = location.state?.result as TestResult | undefined;
+  const stateResult = location.state?.result as QuizResult | undefined;
   const testTitle = location.state?.testTitle as string | undefined;
 
-  const { data: fetchedResults, isLoading } = useQuery({
-    queryKey: ['studentResults', user?.id],
-    queryFn: async () => {
-      // In real app, fetch all results for student
-      return submissionApi.getResultForStudent('3', user!.id);
-    },
+  const { data: myQuizzes, isLoading } = useQuery({
+    queryKey: ['myQuizzes'],
+    queryFn: () => userQuizzesApi.getMyQuizzes(),
     enabled: !!user && !stateResult,
   });
 
-  const result = stateResult || fetchedResults;
+  // Get the latest submitted quiz result
+  const latestQuiz = myQuizzes?.find(q => q.status === 'graded' || q.status === 'submitted');
+  
+  const result = stateResult || (latestQuiz ? {
+    id: latestQuiz.id,
+    user_quiz_id: latestQuiz.id,
+    user_id: latestQuiz.user_id,
+    quiz_id: latestQuiz.quiz_id,
+    score: latestQuiz.score || 0,
+    total_points: latestQuiz.total_points || 0,
+    percentage: latestQuiz.percentage || 0,
+    rank: 0,
+    total_participants: 0,
+    time_spent: latestQuiz.time_spent || 0,
+    submitted_at: latestQuiz.ended_at || new Date().toISOString(),
+  } : null);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
@@ -161,7 +173,7 @@ const ResultPage = () => {
             {/* Score Details */}
             <div className="text-center mb-6">
               <p className="text-2xl font-bold text-foreground">
-                {result.score} / {result.totalPoints}
+                {result.score} / {result.total_points}
               </p>
               <p className="text-muted-foreground">ball to'plandi</p>
             </div>
@@ -170,42 +182,46 @@ const ResultPage = () => {
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 gap-4 mt-6">
-          <Card className="shadow-card animate-slide-up" style={{ animationDelay: '0.1s' }}>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <Target className="w-5 h-5 text-primary" />
+          {result.rank > 0 && (
+            <Card className="shadow-card animate-slide-up" style={{ animationDelay: '0.1s' }}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                    <Target className="w-5 h-5 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-foreground">{rankInfo.label}</p>
+                    <p className="text-sm text-muted-foreground">Reytingdagi o'rin</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-lg font-bold text-foreground">{rankInfo.label}</p>
-                  <p className="text-sm text-muted-foreground">Reytingdagi o'rin</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          <Card className="shadow-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
-            <CardContent className="p-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
-                  <Users className="w-5 h-5 text-accent" />
+          {result.total_participants > 0 && (
+            <Card className="shadow-card animate-slide-up" style={{ animationDelay: '0.2s' }}>
+              <CardContent className="p-4">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center">
+                    <Users className="w-5 h-5 text-accent" />
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-foreground">{result.total_participants}</p>
+                    <p className="text-sm text-muted-foreground">Jami ishtirokchi</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-lg font-bold text-foreground">{result.totalParticipants}</p>
-                  <p className="text-sm text-muted-foreground">Jami ishtirokchi</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+              </CardContent>
+            </Card>
+          )}
 
-          <Card className="shadow-card col-span-2 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+          <Card className={`shadow-card animate-slide-up ${result.rank === 0 && result.total_participants === 0 ? 'col-span-2' : ''}`} style={{ animationDelay: '0.3s' }}>
             <CardContent className="p-4">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-success/10 flex items-center justify-center">
                   <Clock className="w-5 h-5 text-success" />
                 </div>
                 <div>
-                  <p className="text-lg font-bold text-foreground">{formatTime(result.timeSpent)}</p>
+                  <p className="text-lg font-bold text-foreground">{formatTime(result.time_spent)}</p>
                   <p className="text-sm text-muted-foreground">Sarflangan vaqt</p>
                 </div>
               </div>

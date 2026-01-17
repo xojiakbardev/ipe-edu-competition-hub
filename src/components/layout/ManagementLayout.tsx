@@ -31,25 +31,25 @@ const navItems: NavItem[] = [
     label: 'Dashboard', 
     path: '/management/dashboard', 
     icon: <LayoutDashboard className="w-5 h-5" />,
-    allowedRoles: ['teacher', 'admin', 'super-admin']
+    allowedRoles: ['teacher', 'superuser']
   },
   { 
     label: 'Testlar', 
     path: '/management/tests', 
     icon: <FileText className="w-5 h-5" />,
-    allowedRoles: ['teacher', 'admin', 'super-admin']
+    allowedRoles: ['teacher', 'superuser']
   },
   { 
     label: 'Savollar', 
     path: '/management/questions', 
     icon: <HelpCircle className="w-5 h-5" />,
-    allowedRoles: ['teacher', 'admin', 'super-admin']
+    allowedRoles: ['teacher', 'superuser']
   },
   { 
     label: 'Statistika', 
     path: '/management/statistics', 
     icon: <BarChart3 className="w-5 h-5" />,
-    allowedRoles: ['admin', 'super-admin']
+    allowedRoles: ['superuser']
   },
 ];
 
@@ -63,12 +63,22 @@ const ManagementLayout = ({ children }: ManagementLayoutProps) => {
     navigate('/login');
   };
 
+  const getUserDisplayName = () => {
+    if (!user) return '';
+    return `${user.first_name} ${user.last_name}`.trim() || user.phone_number;
+  };
+
+  const getUserInitial = () => {
+    if (!user) return '?';
+    if (user.first_name) return user.first_name.charAt(0);
+    return user.phone_number.charAt(0);
+  };
+
   const getRoleBadge = (role: UserRole) => {
     const badges: Record<UserRole, { label: string; className: string }> = {
       'student': { label: "O'quvchi", className: 'bg-primary/10 text-primary' },
       'teacher': { label: "O'qituvchi", className: 'bg-success/10 text-success' },
-      'admin': { label: 'Admin', className: 'bg-accent/10 text-accent' },
-      'super-admin': { label: 'Super Admin', className: 'bg-destructive/10 text-destructive' },
+      'superuser': { label: 'Super Admin', className: 'bg-destructive/10 text-destructive' },
     };
     return badges[role];
   };
@@ -123,11 +133,11 @@ const ManagementLayout = ({ children }: ManagementLayoutProps) => {
           <div className="p-4 border-b border-sidebar-border">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-sidebar-accent flex items-center justify-center text-sidebar-accent-foreground font-medium">
-                {user?.fullName.charAt(0)}
+                {getUserInitial()}
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-medium text-sm text-sidebar-foreground truncate">
-                  {user?.fullName}
+                  {getUserDisplayName()}
                 </p>
                 {roleBadge && (
                   <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${roleBadge.className}`}>

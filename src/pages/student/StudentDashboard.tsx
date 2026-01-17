@@ -2,7 +2,8 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
-import { testsApi } from '@/api/mockApi';
+import { quizzesApi } from '@/api/quizzesApi';
+import { eventsApi } from '@/api/eventsApi';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -23,19 +24,25 @@ const StudentDashboard = () => {
   const { user, logout } = useAuthStore();
   const [countdown, setCountdown] = useState<{ days: number; hours: number; minutes: number; seconds: number } | null>(null);
 
-  const { data: activeTest, isLoading } = useQuery({
-    queryKey: ['activeTest', user?.id, user?.classCategory],
-    queryFn: () => testsApi.getActiveTestForStudent(user!.id, user!.classCategory || '9-sinf'),
+  const { data: activeQuiz, isLoading } = useQuery({
+    queryKey: ['activeQuiz'],
+    queryFn: () => quizzesApi.getActiveQuiz(),
+    enabled: !!user,
+  });
+
+  const { data: upcomingEvents } = useQuery({
+    queryKey: ['upcomingEvents'],
+    queryFn: () => eventsApi.getUpcomingEvents(),
     enabled: !!user,
   });
 
   // Countdown timer
   useEffect(() => {
-    if (!activeTest) return;
+    if (!activeQuiz) return;
 
     const updateCountdown = () => {
       const now = new Date().getTime();
-      const startTime = new Date(activeTest.startTime).getTime();
+      const startTime = new Date(activeQuiz.start_time).getTime();
       const distance = startTime - now;
 
       if (distance <= 0) {
@@ -54,11 +61,16 @@ const StudentDashboard = () => {
     updateCountdown();
     const interval = setInterval(updateCountdown, 1000);
     return () => clearInterval(interval);
-  }, [activeTest]);
+  }, [activeQuiz]);
 
   const handleLogout = () => {
     logout();
     navigate('/login');
+  };
+
+  const getUserDisplayName = () => {
+    if (!user) return '';
+    return `${user.first_name} ${user.last_name}`.trim() || user.phone_number;
   };
 
   const getStatusBadge = (status: string) => {
@@ -74,8 +86,8 @@ const StudentDashboard = () => {
     }
   };
 
-  const canStartTest = activeTest?.status === 'active' || 
-    (activeTest?.status === 'scheduled' && countdown?.days === 0 && countdown?.hours === 0 && countdown?.minutes === 0);
+  const canStartTest = activeQuiz?.status === 'active' || 
+    (activeQuiz?.status === 'scheduled' && countdown?.days === 0 && countdown?.hours === 0 && countdown?.minutes === 0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -95,7 +107,7 @@ const StudentDashboard = () => {
           <div className="flex items-center gap-4">
             <div className="hidden sm:flex items-center gap-2 text-sm">
               <User className="w-4 h-4 text-muted-foreground" />
-              <span className="text-muted-foreground">{user?.fullName}</span>
+              <span className="text-muted-foreground">{getUserDisplayName()}</span>
             </div>
             <Button variant="ghost" size="icon" onClick={handleLogout}>
               <LogOut className="w-4 h-4" />
@@ -108,10 +120,10 @@ const StudentDashboard = () => {
         {/* Welcome Section */}
         <div className="mb-8 animate-fade-in">
           <h2 className="text-2xl font-bold text-foreground mb-2">
-            Salom, {user?.fullName?.split(' ')[0]}! 👋
+            Salom, {user?.first_name || 'O\'quvchi'}! 👋
           </h2>
           <p className="text-muted-foreground">
-            {user?.school} • {user?.classCategory}
+            {user?.school?.name || 'Maktab'} • {user?.class?.name || 'Sinf'}
           </p>
         </div>
 
@@ -124,8 +136,8 @@ const StudentDashboard = () => {
                   <BookOpen className="w-6 h-6 text-primary" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">3</p>
-                  <p className="text-sm text-muted-foreground">Jami testlar</p>
+                  <p className="text-2xl font-bold text-foreground">{upcomingEvents?.length || 0}</p>
+                  <p className="text-sm text-muted-foreground">Kelayotgan testlar</p>
                 </div>
               </div>
             </CardContent>
@@ -138,7 +150,7 @@ const StudentDashboard = () => {
                   <Trophy className="w-6 h-6 text-success" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">84%</p>
+                  <p className="text-2xl font-bold text-foreground">-</p>
                   <p className="text-sm text-muted-foreground">O'rtacha ball</p>
                 </div>
               </div>
@@ -152,7 +164,7 @@ const StudentDashboard = () => {
                   <Timer className="w-6 h-6 text-accent" />
                 </div>
                 <div>
-                  <p className="text-2xl font-bold text-foreground">#3</p>
+                  <p className="text-2xl font-bold text-foreground">-</p>
                   <p className="text-sm text-muted-foreground">Eng yaxshi o'rin</p>
                 </div>
               </div>
@@ -174,16 +186,16 @@ const StudentDashboard = () => {
                 </div>
               </CardContent>
             </Card>
-          ) : activeTest ? (
+          ) : activeQuiz ? (
             <Card className="shadow-card overflow-hidden">
               <div className="gradient-primary h-2" />
               <CardHeader>
                 <div className="flex items-start justify-between">
                   <div>
-                    <CardTitle className="text-xl">{activeTest.title}</CardTitle>
-                    <CardDescription className="mt-1">{activeTest.description}</CardDescription>
+                    <CardTitle className="text-xl">{activeQuiz.title}</CardTitle>
+                    <CardDescription className="mt-1">{activeQuiz.description}</CardDescription>
                   </div>
-                  {getStatusBadge(activeTest.status)}
+                  {getStatusBadge(activeQuiz.status)}
                 </div>
               </CardHeader>
               <CardContent className="space-y-6">
@@ -192,25 +204,25 @@ const StudentDashboard = () => {
                   <div className="flex items-center gap-2 text-sm">
                     <Calendar className="w-4 h-4 text-muted-foreground" />
                     <span className="text-muted-foreground">
-                      {new Date(activeTest.startTime).toLocaleDateString('uz-UZ')}
+                      {new Date(activeQuiz.start_time).toLocaleDateString('uz-UZ')}
                     </span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Clock className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">{activeTest.duration} daqiqa</span>
+                    <span className="text-muted-foreground">{activeQuiz.duration} daqiqa</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <BookOpen className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">{activeTest.questionCount} ta savol</span>
+                    <span className="text-muted-foreground">{activeQuiz.question_count} ta savol</span>
                   </div>
                   <div className="flex items-center gap-2 text-sm">
                     <Trophy className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-muted-foreground">{activeTest.totalPoints} ball</span>
+                    <span className="text-muted-foreground">{activeQuiz.total_points} ball</span>
                   </div>
                 </div>
 
                 {/* Countdown */}
-                {countdown && activeTest.status === 'scheduled' && (
+                {countdown && activeQuiz.status === 'scheduled' && (
                   <div className="p-4 rounded-xl bg-secondary/50 border border-border">
                     <p className="text-sm text-muted-foreground mb-3 text-center">Test boshlanishiga:</p>
                     <div className="grid grid-cols-4 gap-2">
