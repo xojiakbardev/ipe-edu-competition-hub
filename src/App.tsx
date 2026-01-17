@@ -8,7 +8,6 @@ import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
 import { RoleGuard } from "@/components/auth/RoleGuard";
 import LoginPage from "@/pages/auth/LoginPage";
-import RegisterPage from "@/pages/auth/RegisterPage";
 
 // Student
 import StudentDashboard from "@/pages/student/StudentDashboard";
@@ -36,7 +35,6 @@ const App = () => (
           {/* Public Routes */}
           <Route path="/" element={<Navigate to="/login" replace />} />
           <Route path="/login" element={<LoginPage />} />
-          <Route path="/register" element={<RegisterPage />} />
 
           {/* Student Routes */}
           <Route path="/student/dashboard" element={
@@ -64,28 +62,28 @@ const App = () => (
           {/* Management Routes */}
           <Route path="/management/dashboard" element={
             <ProtectedRoute>
-              <RoleGuard allowedRoles={['teacher', 'admin', 'super-admin']}>
+              <RoleGuard allowedRoles={['teacher', 'superuser']}>
                 <ManagementLayout><ManagementDashboard /></ManagementLayout>
               </RoleGuard>
             </ProtectedRoute>
           } />
           <Route path="/management/tests" element={
             <ProtectedRoute>
-              <RoleGuard allowedRoles={['teacher', 'admin', 'super-admin']}>
+              <RoleGuard allowedRoles={['teacher', 'superuser']}>
                 <ManagementLayout><TestsPage /></ManagementLayout>
               </RoleGuard>
             </ProtectedRoute>
           } />
           <Route path="/management/questions" element={
             <ProtectedRoute>
-              <RoleGuard allowedRoles={['teacher', 'admin', 'super-admin']}>
+              <RoleGuard allowedRoles={['teacher', 'superuser']}>
                 <ManagementLayout><QuestionsPage /></ManagementLayout>
               </RoleGuard>
             </ProtectedRoute>
           } />
           <Route path="/management/statistics" element={
             <ProtectedRoute>
-              <RoleGuard allowedRoles={['admin', 'super-admin']}>
+              <RoleGuard allowedRoles={['superuser']}>
                 <ManagementLayout><StatisticsPage /></ManagementLayout>
               </RoleGuard>
             </ProtectedRoute>

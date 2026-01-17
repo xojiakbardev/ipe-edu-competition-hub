@@ -5,11 +5,19 @@ import type { User, UserRole } from '@/types';
 interface AuthStore {
   user: User | null;
   token: string | null;
+  refreshToken: string | null;
   isAuthenticated: boolean;
   isLoading: boolean;
   
+  // Phone auth flow
+  phoneNumber: string | null;
+  isVerifying: boolean;
+  
   // Actions
-  login: (user: User, token: string) => void;
+  setPhoneNumber: (phone: string) => void;
+  setVerifying: (verifying: boolean) => void;
+  login: (user: User, token: string, refreshToken: string) => void;
+  setTokens: (token: string, refreshToken: string) => void;
   logout: () => void;
   setLoading: (loading: boolean) => void;
   updateUser: (user: Partial<User>) => void;
@@ -20,23 +28,41 @@ export const useAuthStore = create<AuthStore>()(
     (set) => ({
       user: null,
       token: null,
+      refreshToken: null,
       isAuthenticated: false,
       isLoading: false,
+      phoneNumber: null,
+      isVerifying: false,
 
-      login: (user, token) =>
+      setPhoneNumber: (phone) =>
+        set({ phoneNumber: phone }),
+
+      setVerifying: (verifying) =>
+        set({ isVerifying: verifying }),
+
+      login: (user, token, refreshToken) =>
         set({
           user,
           token,
+          refreshToken,
           isAuthenticated: true,
           isLoading: false,
+          phoneNumber: null,
+          isVerifying: false,
         }),
+
+      setTokens: (token, refreshToken) =>
+        set({ token, refreshToken }),
 
       logout: () =>
         set({
           user: null,
           token: null,
+          refreshToken: null,
           isAuthenticated: false,
           isLoading: false,
+          phoneNumber: null,
+          isVerifying: false,
         }),
 
       setLoading: (loading) =>
@@ -52,6 +78,7 @@ export const useAuthStore = create<AuthStore>()(
       partialize: (state) => ({
         user: state.user,
         token: state.token,
+        refreshToken: state.refreshToken,
         isAuthenticated: state.isAuthenticated,
       }),
     }
@@ -66,5 +93,5 @@ export const hasRole = (user: User | null, allowedRoles: UserRole[]): boolean =>
 
 // Management roles helper
 export const isManagementRole = (role: UserRole): boolean => {
-  return ['teacher', 'admin', 'super-admin'].includes(role);
+  return ['teacher', 'superuser'].includes(role);
 };

@@ -3,7 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useAuthStore } from '@/stores/authStore';
 import { useTestStore } from '@/stores/testStore';
-import { testsApi, questionsApi, submissionApi } from '@/api/mockApi';
+import { quizzesApi } from '@/api/quizzesApi';
+import { userQuizzesApi } from '@/api/userQuizzesApi';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
@@ -39,41 +40,64 @@ const TestPage = () => {
     currentQuestionIndex, 
     timeRemaining, 
     answers,
+    activeSession,
     setAnswer, 
     setCurrentQuestion, 
     setTimeRemaining,
     decrementTime,
     getAnswers,
-    clearSession 
+    clearSession,
+    startSession
   } = useTestStore();
 
   const [showSubmitDialog, setShowSubmitDialog] = useState(false);
   const [testStarted, setTestStarted] = useState(false);
   const [startTime, setStartTime] = useState<number>(0);
+  const [userQuizId, setUserQuizId] = useState<number | null>(null);
+  const [questions, setQuestions] = useState<Question[]>([]);
 
-  // Fetch active test
-  const { data: test, isLoading: testLoading } = useQuery({
-    queryKey: ['activeTest', user?.id],
-    queryFn: () => testsApi.getActiveTestForStudent(user!.id, user!.classCategory || '9-sinf'),
+  // Fetch active quiz
+  const { data: quiz, isLoading: quizLoading } = useQuery({
+    queryKey: ['activeQuiz'],
+    queryFn: () => quizzesApi.getActiveQuiz(),
     enabled: !!user,
   });
 
-  // Fetch questions (shuffled for students)
-  const { data: questions = [], isLoading: questionsLoading } = useQuery({
-    queryKey: ['questions', test?.id],
-    queryFn: () => questionsApi.getQuestionsByTestId(test!.id, true),
-    enabled: !!test?.id && testStarted,
+  // Start quiz mutation
+  const startQuizMutation = useMutation({
+    mutationFn: (quizId: number) => userQuizzesApi.startQuiz(quizId),
+    onSuccess: async (userQuiz) => {
+      setUserQuizId(userQuiz.id);
+      startSession(userQuiz);
+      
+      // Fetch questions
+      const questionsData = await userQuizzesApi.getQuizQuestions(userQuiz.id);
+      setQuestions(questionsData);
+      
+      if (quiz) {
+        setTimeRemaining(quiz.duration * 60);
+      }
+      setStartTime(Date.now());
+      setTestStarted(true);
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Xatolik",
+        description: error.response?.data?.detail || "Test boshlanmadi",
+        variant: "destructive",
+      });
+    },
   });
 
   // Submit mutation
   const submitMutation = useMutation({
     mutationFn: async () => {
-      const timeSpent = Math.floor((Date.now() - startTime) / 1000);
-      return submissionApi.submitTest(test!.id, user!.id, getAnswers(), timeSpent);
+      if (!userQuizId) throw new Error('No active quiz');
+      return userQuizzesApi.submitQuiz(userQuizId, { answers: getAnswers() });
     },
     onSuccess: (result) => {
       clearSession();
-      navigate('/student/result', { state: { result, testTitle: test?.title } });
+      navigate('/student/result', { state: { result, testTitle: quiz?.title } });
     },
     onError: () => {
       toast({
@@ -107,11 +131,9 @@ const TestPage = () => {
     }
   }, [timeRemaining, testStarted, submitMutation, toast]);
 
-  const startTest = () => {
-    if (test) {
-      setTimeRemaining(test.duration * 60);
-      setStartTime(Date.now());
-      setTestStarted(true);
+  const handleStartTest = () => {
+    if (quiz) {
+      startQuizMutation.mutate(quiz.id);
     }
   };
 
@@ -132,7 +154,7 @@ const TestPage = () => {
   const isLastQuestion = currentQuestionIndex === questions.length - 1;
   const isTimeWarning = timeRemaining < 60 && timeRemaining > 0;
 
-  if (testLoading) {
+  if (quizLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="space-y-4 text-center">
@@ -143,7 +165,7 @@ const TestPage = () => {
     );
   }
 
-  if (!test) {
+  if (!quiz) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <Card className="shadow-card max-w-md w-full">
@@ -167,17 +189,17 @@ const TestPage = () => {
         <Card className="shadow-card max-w-lg w-full animate-scale-in">
           <div className="gradient-primary h-2 rounded-t-lg" />
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">{test.title}</CardTitle>
-            <p className="text-muted-foreground mt-2">{test.description}</p>
+            <CardTitle className="text-2xl">{quiz.title}</CardTitle>
+            <p className="text-muted-foreground mt-2">{quiz.description}</p>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-2 gap-4 p-4 bg-secondary/50 rounded-xl">
               <div className="text-center">
-                <p className="text-2xl font-bold text-foreground">{test.duration}</p>
+                <p className="text-2xl font-bold text-foreground">{quiz.duration}</p>
                 <p className="text-sm text-muted-foreground">daqiqa</p>
               </div>
               <div className="text-center">
-                <p className="text-2xl font-bold text-foreground">{test.questionCount}</p>
+                <p className="text-2xl font-bold text-foreground">{quiz.question_count}</p>
                 <p className="text-sm text-muted-foreground">savol</p>
               </div>
             </div>
@@ -198,9 +220,17 @@ const TestPage = () => {
 
             <Button 
               className="w-full h-12 gradient-primary text-primary-foreground font-semibold"
-              onClick={startTest}
+              onClick={handleStartTest}
+              disabled={startQuizMutation.isPending}
             >
-              Testni boshlash
+              {startQuizMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Boshlanmoqda...
+                </>
+              ) : (
+                'Testni boshlash'
+              )}
             </Button>
 
             <Button 
@@ -224,7 +254,7 @@ const TestPage = () => {
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4">
               <div className="hidden sm:block">
-                <p className="text-sm font-medium text-foreground">{test.title}</p>
+                <p className="text-sm font-medium text-foreground">{quiz.title}</p>
                 <p className="text-xs text-muted-foreground">
                   Savol {currentQuestionIndex + 1} / {questions.length}
                 </p>
@@ -245,14 +275,7 @@ const TestPage = () => {
 
       {/* Main Content */}
       <main className="container mx-auto px-4 py-6 max-w-3xl">
-        {questionsLoading ? (
-          <div className="space-y-4">
-            <Skeleton className="h-8 w-3/4" />
-            <Skeleton className="h-20 w-full" />
-            <Skeleton className="h-12 w-full" />
-            <Skeleton className="h-12 w-full" />
-          </div>
-        ) : currentQuestion ? (
+        {currentQuestion ? (
           <Card className="shadow-card animate-fade-in">
             <CardContent className="p-6 sm:p-8">
               {/* Question */}
@@ -267,19 +290,19 @@ const TestPage = () => {
 
               {/* Options */}
               <RadioGroup
-                value={answers.get(currentQuestion.id) || ''}
-                onValueChange={(value) => setAnswer(currentQuestion.id, value)}
+                value={answers.get(String(currentQuestion.id)) || ''}
+                onValueChange={(value) => setAnswer(String(currentQuestion.id), value)}
                 className="space-y-3"
               >
                 {currentQuestion.options.map((option, index) => (
                   <div key={option.id}>
                     <RadioGroupItem
-                      value={option.id}
-                      id={option.id}
+                      value={String(option.id)}
+                      id={String(option.id)}
                       className="peer sr-only"
                     />
                     <Label
-                      htmlFor={option.id}
+                      htmlFor={String(option.id)}
                       className="flex items-center gap-4 p-4 rounded-xl border-2 border-border cursor-pointer transition-all hover:border-primary/50 hover:bg-primary/5 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/10"
                     >
                       <span className="flex items-center justify-center w-8 h-8 rounded-full bg-secondary text-foreground font-medium text-sm">
@@ -343,7 +366,7 @@ const TestPage = () => {
                 className={`w-9 h-9 rounded-lg text-sm font-medium transition-all ${
                   idx === currentQuestionIndex
                     ? 'gradient-primary text-primary-foreground'
-                    : answers.has(q.id)
+                    : answers.has(String(q.id))
                     ? 'bg-success/10 text-success border border-success/30'
                     : 'bg-secondary text-muted-foreground hover:bg-secondary/80'
                 }`}

@@ -1,40 +1,53 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '@/stores/authStore';
-import { authApi } from '@/api/mockApi';
+import { authApi } from '@/api/authApi';
 import { getRedirectPath } from '@/components/auth/RoleGuard';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
+import { InputOTP, InputOTPGroup, InputOTPSlot } from '@/components/ui/input-otp';
 import { useToast } from '@/hooks/use-toast';
-import { GraduationCap, Users, ShieldCheck, Crown, Loader2, BookOpen } from 'lucide-react';
-import type { UserRole } from '@/types';
-
-const roles: { value: UserRole; label: string; icon: React.ReactNode; description: string }[] = [
-  { value: 'student', label: "O'quvchi", icon: <GraduationCap className="w-5 h-5" />, description: "Test topshirish uchun" },
-  { value: 'teacher', label: "O'qituvchi", icon: <BookOpen className="w-5 h-5" />, description: "Test yaratish uchun" },
-  { value: 'admin', label: 'Admin', icon: <ShieldCheck className="w-5 h-5" />, description: "Testlarni boshqarish" },
-  { value: 'super-admin', label: 'Super Admin', icon: <Crown className="w-5 h-5" />, description: "To'liq boshqaruv" },
-];
+import { GraduationCap, Loader2, ArrowLeft, Phone, KeyRound } from 'lucide-react';
 
 const LoginPage = () => {
   const navigate = useNavigate();
-  const { login, setLoading, isLoading } = useAuthStore();
+  const { login, setLoading, isLoading, setPhoneNumber, phoneNumber, isVerifying, setVerifying } = useAuthStore();
   const { toast } = useToast();
   
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [selectedRole, setSelectedRole] = useState<UserRole>('student');
+  const [phone, setPhone] = useState('');
+  const [code, setCode] = useState('');
+  const [step, setStep] = useState<'phone' | 'code'>('phone');
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const formatPhoneNumber = (value: string) => {
+    // Remove all non-digits
+    const digits = value.replace(/\D/g, '');
+    // Format as +998 XX XXX XX XX
+    if (digits.length <= 3) return `+${digits}`;
+    if (digits.length <= 5) return `+${digits.slice(0, 3)} ${digits.slice(3)}`;
+    if (digits.length <= 8) return `+${digits.slice(0, 3)} ${digits.slice(3, 5)} ${digits.slice(5)}`;
+    if (digits.length <= 10) return `+${digits.slice(0, 3)} ${digits.slice(3, 5)} ${digits.slice(5, 8)} ${digits.slice(8)}`;
+    return `+${digits.slice(0, 3)} ${digits.slice(3, 5)} ${digits.slice(5, 8)} ${digits.slice(8, 10)} ${digits.slice(10, 12)}`;
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatPhoneNumber(e.target.value);
+    setPhone(formatted);
+  };
+
+  const getCleanPhone = () => {
+    return '+' + phone.replace(/\D/g, '');
+  };
+
+  const handleSendCode = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!email || !password) {
+    const cleanPhone = getCleanPhone();
+    if (cleanPhone.length < 13) {
       toast({
         title: "Xatolik",
-        description: "Barcha maydonlarni to'ldiring",
+        description: "Telefon raqamini to'liq kiriting",
         variant: "destructive",
       });
       return;
@@ -43,24 +56,71 @@ const LoginPage = () => {
     setLoading(true);
     
     try {
-      const { user, token } = await authApi.login(email, password, selectedRole);
-      login(user, token);
+      await authApi.sendCode(cleanPhone);
+      setPhoneNumber(cleanPhone);
+      setStep('code');
+      setVerifying(true);
       
       toast({
-        title: "Muvaffaqiyatli!",
-        description: `Xush kelibsiz, ${user.fullName}!`,
+        title: "Kod yuborildi",
+        description: `${cleanPhone} raqamiga SMS kod yuborildi`,
       });
-      
-      navigate(getRedirectPath(user.role));
-    } catch (error) {
+    } catch (error: any) {
       toast({
         title: "Xatolik",
-        description: "Kirish amalga oshmadi. Qaytadan urinib ko'ring.",
+        description: error.response?.data?.detail || "SMS yuborilmadi. Qaytadan urinib ko'ring.",
         variant: "destructive",
       });
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (code.length !== 6) {
+      toast({
+        title: "Xatolik",
+        description: "Kodni to'liq kiriting",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLoading(true);
+    
+    try {
+      const cleanPhone = phoneNumber || getCleanPhone();
+      const response = await authApi.verifyCode(cleanPhone, code);
+      
+      login(response.user, response.access, response.refresh);
+      
+      const displayName = response.user.first_name 
+        ? `${response.user.first_name} ${response.user.last_name}`.trim()
+        : response.user.phone_number;
+      
+      toast({
+        title: "Muvaffaqiyatli!",
+        description: `Xush kelibsiz, ${displayName}!`,
+      });
+      
+      navigate(getRedirectPath(response.user.role));
+    } catch (error: any) {
+      toast({
+        title: "Xatolik",
+        description: error.response?.data?.detail || "Kod noto'g'ri. Qaytadan urinib ko'ring.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleBack = () => {
+    setStep('phone');
+    setCode('');
+    setVerifying(false);
   };
 
   return (
@@ -79,86 +139,111 @@ const LoginPage = () => {
           <CardHeader className="text-center pb-2">
             <CardTitle className="text-xl">Tizimga kirish</CardTitle>
             <CardDescription>
-              Hisobingiz yo'qmi?{' '}
-              <Link to="/register" className="text-primary hover:underline font-medium">
-                Ro'yxatdan o'ting
-              </Link>
+              {step === 'phone' 
+                ? "Telefon raqamingizni kiriting"
+                : "SMS orqali yuborilgan kodni kiriting"
+              }
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="email@example.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="h-11"
-                />
-              </div>
-              
-              <div className="space-y-2">
-                <Label htmlFor="password">Parol</Label>
-                <Input
-                  id="password"
-                  type="password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-11"
-                />
-              </div>
+            {step === 'phone' ? (
+              <form onSubmit={handleSendCode} className="space-y-6">
+                <div className="space-y-2">
+                  <Label htmlFor="phone">Telefon raqam</Label>
+                  <div className="relative">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
+                    <Input
+                      id="phone"
+                      type="tel"
+                      placeholder="+998 XX XXX XX XX"
+                      value={phone}
+                      onChange={handlePhoneChange}
+                      className="h-12 pl-10 text-lg"
+                      maxLength={17}
+                    />
+                  </div>
+                </div>
 
-              <div className="space-y-3">
-                <Label>Rolni tanlang</Label>
-                <RadioGroup
-                  value={selectedRole}
-                  onValueChange={(value) => setSelectedRole(value as UserRole)}
-                  className="grid grid-cols-2 gap-3"
+                <Button 
+                  type="submit" 
+                  className="w-full h-12 gradient-primary text-primary-foreground font-semibold"
+                  disabled={isLoading}
                 >
-                  {roles.map((role) => (
-                    <div key={role.value}>
-                      <RadioGroupItem
-                        value={role.value}
-                        id={role.value}
-                        className="peer sr-only"
-                      />
-                      <Label
-                        htmlFor={role.value}
-                        className="flex flex-col items-center justify-center p-3 rounded-lg border-2 border-muted cursor-pointer transition-all hover:border-primary/50 peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-primary/5"
-                      >
-                        <span className="text-primary mb-1">{role.icon}</span>
-                        <span className="font-medium text-sm">{role.label}</span>
-                      </Label>
-                    </div>
-                  ))}
-                </RadioGroup>
-              </div>
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Yuborilmoqda...
+                    </>
+                  ) : (
+                    'Kodni yuborish'
+                  )}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleVerifyCode} className="space-y-6">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleBack}
+                  className="mb-2 -ml-2"
+                >
+                  <ArrowLeft className="w-4 h-4 mr-1" />
+                  Orqaga
+                </Button>
 
-              <Button 
-                type="submit" 
-                className="w-full h-11 gradient-primary text-primary-foreground font-semibold"
-                disabled={isLoading}
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Yuklanmoqda...
-                  </>
-                ) : (
-                  'Kirish'
-                )}
-              </Button>
-            </form>
+                <div className="space-y-4">
+                  <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                    <KeyRound className="w-4 h-4" />
+                    <span>Kod {phoneNumber} ga yuborildi</span>
+                  </div>
+                  
+                  <div className="flex justify-center">
+                    <InputOTP
+                      maxLength={6}
+                      value={code}
+                      onChange={setCode}
+                    >
+                      <InputOTPGroup>
+                        <InputOTPSlot index={0} className="w-12 h-14 text-xl" />
+                        <InputOTPSlot index={1} className="w-12 h-14 text-xl" />
+                        <InputOTPSlot index={2} className="w-12 h-14 text-xl" />
+                        <InputOTPSlot index={3} className="w-12 h-14 text-xl" />
+                        <InputOTPSlot index={4} className="w-12 h-14 text-xl" />
+                        <InputOTPSlot index={5} className="w-12 h-14 text-xl" />
+                      </InputOTPGroup>
+                    </InputOTP>
+                  </div>
+                </div>
 
-            {/* Demo credentials hint */}
-            <div className="mt-6 p-3 rounded-lg bg-muted/50 border border-border">
-              <p className="text-xs text-muted-foreground text-center">
-                <span className="font-medium">Demo:</span> Istalgan email va parol bilan kiring
-              </p>
-            </div>
+                <Button 
+                  type="submit" 
+                  className="w-full h-12 gradient-primary text-primary-foreground font-semibold"
+                  disabled={isLoading || code.length !== 6}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Tekshirilmoqda...
+                    </>
+                  ) : (
+                    'Kirish'
+                  )}
+                </Button>
+
+                <div className="text-center">
+                  <Button
+                    type="button"
+                    variant="link"
+                    className="text-muted-foreground"
+                    onClick={handleSendCode}
+                    disabled={isLoading}
+                  >
+                    Kodni qayta yuborish
+                  </Button>
+                </div>
+              </form>
+            )}
           </CardContent>
         </Card>
       </div>

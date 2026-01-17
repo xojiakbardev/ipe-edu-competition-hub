@@ -1,20 +1,20 @@
 import { create } from 'zustand';
-import type { StudentAnswer, TestSession } from '@/types';
+import type { UserQuizAnswer, UserQuiz } from '@/types';
 
 interface TestSessionStore {
-  activeSession: TestSession | null;
+  activeSession: UserQuiz | null;
   currentQuestionIndex: number;
   timeRemaining: number; // in seconds
   answers: Map<string, string>; // questionId -> optionId
   
   // Actions
-  startSession: (session: TestSession) => void;
+  startSession: (session: UserQuiz) => void;
   endSession: () => void;
   setAnswer: (questionId: string, optionId: string) => void;
   setCurrentQuestion: (index: number) => void;
   setTimeRemaining: (time: number) => void;
   decrementTime: () => void;
-  getAnswers: () => StudentAnswer[];
+  getAnswers: () => UserQuizAnswer[];
   clearSession: () => void;
 }
 
@@ -37,8 +37,8 @@ export const useTestStore = create<TestSessionStore>((set, get) => ({
       set({
         activeSession: {
           ...state.activeSession,
-          endedAt: new Date().toISOString(),
-          isSubmitted: true,
+          ended_at: new Date().toISOString(),
+          status: 'submitted',
         },
       });
     }
@@ -64,12 +64,12 @@ export const useTestStore = create<TestSessionStore>((set, get) => ({
 
   getAnswers: () => {
     const answers = get().answers;
-    const result: StudentAnswer[] = [];
+    const result: UserQuizAnswer[] = [];
     answers.forEach((optionId, questionId) => {
       result.push({
-        questionId,
-        selectedOptionId: optionId,
-        answeredAt: new Date().toISOString(),
+        question_id: parseInt(questionId),
+        selected_option_id: parseInt(optionId),
+        answered_at: new Date().toISOString(),
       });
     });
     return result;

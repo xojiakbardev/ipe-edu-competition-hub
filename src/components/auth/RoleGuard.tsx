@@ -35,8 +35,7 @@ export const getRedirectPath = (role: UserRole): string => {
     case 'student':
       return '/student/dashboard';
     case 'teacher':
-    case 'admin':
-    case 'super-admin':
+    case 'superuser':
       return '/management/dashboard';
     default:
       return '/login';
